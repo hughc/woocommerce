@@ -90,7 +90,8 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 				'label' => __( 'Query type', 'woocommerce' ),
 				'options' => array(
 					'and' => __( 'AND', 'woocommerce' ),
-					'or'  => __( 'OR', 'woocommerce' )
+					'or'  => __( 'OR', 'woocommerce' ),
+					'only' => __( 'ONLY', 'woocommerce')
 				)
 			),
 		);
@@ -234,6 +235,9 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 				// List display
 				echo "<ul>";
 
+				// $buffer output, as we may want to prepend 'all' item to it
+				$output_buffer = array();
+
 				foreach ( $terms as $term ) {
 
 					// Get count based on current view - uses transients
@@ -253,7 +257,7 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 						continue;
 
 					// If this is an AND query, only show options with count > 0
-					if ( $query_type == 'and' ) {
+					if ( $query_type == 'and') {
 
 						$count = sizeof( array_intersect( $_products_in_term, WC()->query->filtered_product_ids ) );
 
@@ -311,7 +315,7 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 								if ( ! empty( $data['terms'] ) )
 									$link = add_query_arg( 'filter_' . $filter_name, implode( ',', $data['terms'] ), $link );
 
-								if ( $data['query_type'] == 'or' )
+								if ( $data['query_type'] == 'or' || $data['query_type'] == 'only' )
 									$link = add_query_arg( 'query_type_' . $filter_name, 'or', $link );
 							}
 						}
@@ -342,7 +346,13 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 					} else {
 
 						$class = '';
-						$link = add_query_arg( $arg, implode( ',', $current_filter ), $link );
+
+						if ( $query_type == 'only' ) {
+							$link = add_query_arg( $arg, $term->term_id, $link );
+						} else if ( ! empty( $data['terms'] ) ) {
+							$link = add_query_arg( $arg, implode( ',', $current_filter ), $link );
+						}
+
 
 					}
 
@@ -357,19 +367,42 @@ class WC_Widget_Layered_Nav extends WC_Widget {
 					// Query type Arg
 					if ( $query_type == 'or' && ! ( sizeof( $current_filter ) == 1 && isset( $_chosen_attributes[ $taxonomy ]['terms'] ) && is_array( $_chosen_attributes[ $taxonomy ]['terms'] ) && in_array( $term->term_id, $_chosen_attributes[ $taxonomy ]['terms'] ) ) )
 						$link = add_query_arg( 'query_type_' . sanitize_title( $instance['attribute'] ), 'or', $link );
+					$li = '';
+					$li.= '<li ' . $class . '>';
 
-					echo '<li ' . $class . '>';
+					$li.= ( $count > 0 || $option_is_set ) ? '<a href="' . esc_url( apply_filters( 'woocommerce_layered_nav_link', $link ) ) . '">' : '<span>';
 
-					echo ( $count > 0 || $option_is_set ) ? '<a href="' . esc_url( apply_filters( 'woocommerce_layered_nav_link', $link ) ) . '">' : '<span>';
+					$li.= $term->name;
 
-					echo $term->name;
+					$li.= ( $count > 0 || $option_is_set ) ? '</a>' : '</span>';
 
-					echo ( $count > 0 || $option_is_set ) ? '</a>' : '</span>';
-
-					echo ' <small class="count">' . $count . '</small></li>';
-
+					$li.= ' <small class="count">' . $count . '</small></li>';
+					$output_buffer[] = $li;
 				}
+				// if we're operating in only mode, install an 'all' option to the front of the list
+				// base off the last item in the list, minus the filtered param
+				if ($query_type == 'only' ) {
+					$extra_item = array();
 
+					// recalc the current page URL's filter
+					$current_filter = ( isset( $_GET[ $arg ] ) ) ? explode( ',', $_GET[ $arg ] ) : array();
+					if ( ! is_array( $current_filter ) )
+						$current_filter = array();
+					$current_filter = array_map( 'esc_attr', $current_filter );
+
+				
+
+					$class = count($current_filter) == 0 ? 'class = "chosen"' : ''; 
+					$extra_item[] = '<li ' . $class . '>';
+
+					$link = remove_query_arg($arg, $link);
+					$extra_item[] = '<a href="' . esc_url( apply_filters( 'woocommerce_layered_nav_link', $link ) ) . '">';
+					$extra_item[] = 'All';
+					$extra_item[] = '</a>';
+					$output_buffer = array_merge($extra_item, $output_buffer);
+					}
+
+					echo implode('', $output_buffer);
 				echo "</ul>";
 
 			} // End display type conditional
